@@ -1,0 +1,23 @@
+Package: scwbReferenceMap
+Type: Package
+Title: Authenticated Reference Mapping for scworkbench
+Version: 0.1.0
+Authors@R: c(
+    person(
+      given = "Hendrik A.",
+      family = "de Weerd",
+      email = "dirkdeweerd.work@gmail.com",
+      role = c("aut", "cre")
+    )
+  )
+Author: Hendrik A. de Weerd [aut, cre]
+Maintainer: Hendrik A. de Weerd <dirkdeweerd.work@gmail.com>
+Description: Explicitly activated ABI v3 operation pack for dataset-agnostic,
+    leave-one-category-out reference-map calibration and authenticated transfer
+    of categorical annotations and continuous reference vectors.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends: R (>= 4.1.0)
+Imports: jsonlite, scworkbench, stats
+Suggests: DBI, fs, Matrix, RANN, RSQLite
+RoxygenNote: 7.3.3

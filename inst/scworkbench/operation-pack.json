@@ -1,0 +1,962 @@
+{
+  "schema_version": "scworkbench.operation_pack.v3",
+  "pack_abi_version": "3",
+  "identity_scheme": "scworkbench.operation_pack.canonical_json.v1",
+  "namespace": "scwbreferencemap",
+  "package": {
+    "name": "scwbReferenceMap",
+    "version": "0.1.0"
+  },
+  "backend": "R",
+  "compatibility": {
+    "scworkbench": {
+      "minimum": "0.1.0",
+      "maximum_exclusive": "0.2.0"
+    },
+    "pack_abi": {
+      "minimum": "3",
+      "maximum": "3"
+    }
+  },
+  "entry_point": "scwbReferenceMap::register_operation_pack",
+  "operations": [
+    {
+      "name": "reference_map_calibrate",
+      "qualified_name": "scwbreferencemap::reference_map_calibrate",
+      "title": "Calibrate a reusable reference map",
+      "description": "Leave one configured metadata category out at a time to calibrate reference-space support and optional transfer behavior.",
+      "runner": ".run_reference_map_calibrate",
+      "inputs": [
+        {
+          "name": "reference_matrix",
+          "kind": "matrix",
+          "required": true,
+          "alignment": "cell_and_feature_ordered"
+        },
+        {
+          "name": "reference_space",
+          "kind": "space",
+          "required": true,
+          "alignment": "cell_ordered"
+        },
+        {
+          "name": "reference_annotation",
+          "kind": "cell_vector",
+          "required": false,
+          "alignment": "cell_ordered"
+        },
+        {
+          "name": "reference_continuous",
+          "kind": "cell_vector_family",
+          "required": false,
+          "alignment": "cell_ordered"
+        }
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "holdout_group_field": {
+            "type": ["string", "null"],
+            "default": "orig.ident",
+            "minLength": 1
+          },
+          "k_values": {
+            "type": "array",
+            "default": [
+              15,
+              30,
+              50
+            ],
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10000
+            }
+          },
+          "primary_k": {
+            "type": "integer",
+            "default": 30,
+            "minimum": 1,
+            "maximum": 10000
+          },
+          "distance_statistic": {
+            "type": "string",
+            "default": "median_first_primary_k_distance",
+            "enum": [
+              "median_first_primary_k_distance"
+            ]
+          },
+          "support_quantiles": {
+            "type": "array",
+            "default": [
+              0.95,
+              0.99
+            ],
+            "minItems": 2,
+            "maxItems": 2,
+            "uniqueItems": true,
+            "items": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            }
+          },
+          "primary_continuous_key": {
+            "type": ["string", "null"],
+            "default": null,
+            "minLength": 1
+          },
+          "space_chunk_size": {
+            "type": "integer",
+            "default": 1024,
+            "minimum": 1,
+            "maximum": 1000000
+          },
+          "query_chunk_size": {
+            "type": "integer",
+            "default": 1024,
+            "minimum": 1,
+            "maximum": 1000000
+          }
+        },
+        "additionalProperties": false
+      },
+      "registry_reads": [
+        {
+          "name": "holdout_metadata",
+          "category": "authenticated_core_registry_snapshot",
+          "kind": "ordered_cell_metadata",
+          "reader": "read_ordered_cell_metadata",
+          "matrix_input": "reference_matrix",
+          "field_parameters": [
+            {
+              "parameter": "holdout_group_field",
+              "role": "categorical",
+              "cardinality": "zero_or_one"
+            }
+          ],
+          "row_order": "matrix_effective_cell_order_v1",
+          "missing_value_policy": "preserve_null_v1",
+          "call_discipline": "single_use"
+        }
+      ],
+      "typed_space_reads": [
+        {
+          "name": "reference_coordinates",
+          "input": "reference_space",
+          "reader": "read_typed_space",
+          "kind": "space",
+          "role": "candidate",
+          "selection": {
+            "policy": "full_input_axis_v1"
+          },
+          "chunk_size_parameter": "space_chunk_size",
+          "call_discipline": "ordered_partition_exactly_once"
+        }
+      ],
+      "dimension_policies": [
+        {
+          "output": "heldout_predictions",
+          "policy": "data_dependent_table_v1"
+        },
+        {
+          "output": "calibration_metrics",
+          "policy": "data_dependent_table_v1"
+        },
+        {
+          "output": "thresholds",
+          "policy": "data_dependent_table_v1"
+        },
+        {
+          "output": "coverage_limitations",
+          "policy": "data_dependent_table_v1"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "calibration",
+          "category": "terminal_artifact",
+          "kind": "model_ref",
+          "storage_profile": "model_ref_contained_tree_v1",
+          "allocated_id_key": "calibration_id",
+          "required": true,
+          "promotion_group": "calibration",
+          "contained_model_sibling_closure_policy": {
+            "policy": "staged_contained_model_sibling_closure_v1",
+            "engine": "scwbreferencemap",
+            "model_type": "reference_map_calibration",
+            "primary_path": "calibration.json",
+            "source_space_input": "reference_space",
+            "dimensions_parameter": null,
+            "required_sibling_terminals": [
+              "calibration_metrics",
+              "coverage_limitations",
+              "heldout_predictions",
+              "thresholds"
+            ],
+            "file_order": "utf8_path_lexicographic_v1",
+            "maximum_file_count": 4,
+            "maximum_total_bytes": 67108864
+          }
+        },
+        {
+          "name": "heldout_predictions",
+          "category": "terminal_artifact",
+          "kind": "obs_table",
+          "storage_profile": "terminal_primitive_v1",
+          "allocated_id_key": "heldout_predictions_id",
+          "required": true,
+          "promotion_group": "calibration",
+          "table_type": "reference_map_heldout_predictions"
+        },
+        {
+          "name": "calibration_metrics",
+          "category": "terminal_artifact",
+          "kind": "obs_table",
+          "storage_profile": "terminal_primitive_v1",
+          "allocated_id_key": "calibration_metrics_id",
+          "required": true,
+          "promotion_group": "calibration",
+          "table_type": "reference_map_calibration_metrics"
+        },
+        {
+          "name": "thresholds",
+          "category": "terminal_artifact",
+          "kind": "obs_table",
+          "storage_profile": "terminal_primitive_v1",
+          "allocated_id_key": "thresholds_id",
+          "required": true,
+          "promotion_group": "calibration",
+          "table_type": "reference_map_thresholds"
+        },
+        {
+          "name": "coverage_limitations",
+          "category": "terminal_artifact",
+          "kind": "obs_table",
+          "storage_profile": "terminal_primitive_v1",
+          "allocated_id_key": "coverage_limitations_id",
+          "required": true,
+          "promotion_group": "calibration",
+          "table_type": "reference_map_coverage_limitations"
+        }
+      ],
+      "dependencies": [
+        {
+          "requirement_id": "scworkbench_runtime",
+          "kind": "r_package",
+          "name": "scworkbench",
+          "version": {
+            "scheme": "r_package_version_constraint_v1",
+            "specifier": ">=0.1.0,<0.2.0"
+          },
+          "disposition": "required",
+          "import_probe": "wb_prim_model_ref"
+        },
+        {
+          "requirement_id": "jsonlite_runtime",
+          "kind": "r_package",
+          "name": "jsonlite",
+          "version": {
+            "scheme": "r_package_version_constraint_v1",
+            "specifier": ">=1.8.0,<3.0.0"
+          },
+          "disposition": "required",
+          "import_probe": "toJSON"
+        },
+        {
+          "requirement_id": "rann_runtime",
+          "kind": "r_package",
+          "name": "RANN",
+          "version": {
+            "scheme": "r_package_version_constraint_v1",
+            "specifier": ">=2.6.0,<3.0.0"
+          },
+          "disposition": "required",
+          "import_probe": "nn2"
+        }
+      ],
+      "promotion_closure": {
+        "calibration": [
+          "calibration",
+          "calibration_metrics",
+          "coverage_limitations",
+          "heldout_predictions",
+          "thresholds"
+        ],
+        "heldout_predictions": [
+          "calibration",
+          "calibration_metrics",
+          "coverage_limitations",
+          "heldout_predictions",
+          "thresholds"
+        ],
+        "calibration_metrics": [
+          "calibration",
+          "calibration_metrics",
+          "coverage_limitations",
+          "heldout_predictions",
+          "thresholds"
+        ],
+        "thresholds": [
+          "calibration",
+          "calibration_metrics",
+          "coverage_limitations",
+          "heldout_predictions",
+          "thresholds"
+        ],
+        "coverage_limitations": [
+          "calibration",
+          "calibration_metrics",
+          "coverage_limitations",
+          "heldout_predictions",
+          "thresholds"
+        ]
+      },
+      "replay_equivalence": {
+        "calibration": "loadable_reference",
+        "heldout_predictions": "exact_canonical_value",
+        "calibration_metrics": "exact_canonical_value",
+        "thresholds": "exact_canonical_value",
+        "coverage_limitations": "exact_canonical_value"
+      },
+      "retained_parameters": [
+        {
+          "name": "holdout_group_field",
+          "source": "effective_parameter_value",
+          "parameter": "holdout_group_field",
+          "required": true
+        },
+        {
+          "name": "k_values",
+          "source": "effective_parameter_value",
+          "parameter": "k_values",
+          "required": true
+        },
+        {
+          "name": "primary_k",
+          "source": "effective_parameter_value",
+          "parameter": "primary_k",
+          "required": true
+        },
+        {
+          "name": "distance_statistic",
+          "source": "effective_parameter_value",
+          "parameter": "distance_statistic",
+          "required": true
+        },
+        {
+          "name": "support_quantiles",
+          "source": "effective_parameter_value",
+          "parameter": "support_quantiles",
+          "required": true
+        },
+        {
+          "name": "primary_continuous_key",
+          "source": "effective_parameter_value",
+          "parameter": "primary_continuous_key",
+          "required": false
+        },
+        {
+          "name": "space_chunk_size",
+          "source": "effective_parameter_value",
+          "parameter": "space_chunk_size",
+          "required": true
+        },
+        {
+          "name": "query_chunk_size",
+          "source": "effective_parameter_value",
+          "parameter": "query_chunk_size",
+          "required": true
+        }
+      ],
+      "public_interface": {
+        "intent": [
+          "reference",
+          "mapping",
+          "calibration"
+        ],
+        "inputs": [
+          {
+            "name": "reference_matrix",
+            "label": "reference_matrix",
+            "help": "Matrix supplying the authenticated reference metadata axis."
+          },
+          {
+            "name": "reference_space",
+            "label": "reference_space",
+            "help": "Authenticated reference coordinates."
+          },
+          {
+            "name": "reference_annotation",
+            "label": "reference_annotation",
+            "help": "Optional categorical annotation to calibrate."
+          },
+          {
+            "name": "reference_continuous",
+            "label": "reference_continuous",
+            "help": "Optional continuous vectors, including selected pseudotime."
+          }
+        ],
+        "parameters": [
+          {
+            "name": "holdout_group_field",
+            "type": "string",
+            "help": "Categorical metadata field used for held-out categories."
+          },
+          {
+            "name": "k_values",
+            "type": "list",
+            "help": "Neighbor k values."
+          },
+          {
+            "name": "primary_k",
+            "type": "int",
+            "help": "Primary neighbor k."
+          },
+          {
+            "name": "distance_statistic",
+            "type": "choice",
+            "help": "Support distance statistic."
+          },
+          {
+            "name": "support_quantiles",
+            "type": "list",
+            "help": "Supported and borderline calibration quantiles."
+          },
+          {
+            "name": "primary_continuous_key",
+            "type": "string",
+            "help": "Selected primary trajectory or other continuous key."
+          },
+          {
+            "name": "space_chunk_size",
+            "type": "int",
+            "help": "Bounded coordinate read size."
+          },
+          {
+            "name": "query_chunk_size",
+            "type": "int",
+            "help": "Bounded exact-neighbor query size."
+          }
+        ],
+        "outputs": [
+          {
+            "name": "calibration",
+            "description": "Reference-map calibration calibration artifact."
+          },
+          {
+            "name": "heldout_predictions",
+            "description": "Reference-map calibration heldout_predictions artifact."
+          },
+          {
+            "name": "calibration_metrics",
+            "description": "Reference-map calibration calibration_metrics artifact."
+          },
+          {
+            "name": "thresholds",
+            "description": "Reference-map calibration thresholds artifact."
+          },
+          {
+            "name": "coverage_limitations",
+            "description": "Reference-map calibration coverage_limitations artifact."
+          }
+        ]
+      }
+    },
+    {
+      "name": "reference_map_transfer",
+      "qualified_name": "scwbreferencemap::reference_map_transfer",
+      "title": "Transfer a frozen reference map",
+      "description": "Authenticate a query-to-reference ledger against a frozen calibration, classify support, and transfer optional values.",
+      "runner": ".run_reference_map_transfer",
+      "inputs": [
+        {
+          "name": "in_space",
+          "kind": "space",
+          "required": true,
+          "alignment": "cell_ordered"
+        },
+        {
+          "name": "reference_space",
+          "kind": "space",
+          "required": true,
+          "alignment": "cell_ordered"
+        },
+        {
+          "name": "neighbors",
+          "kind": "obs_table",
+          "required": true,
+          "alignment": "none",
+          "effective_cell_coverage": "reference_only"
+        },
+        {
+          "name": "calibration",
+          "kind": "model_ref",
+          "required": true,
+          "alignment": "model_linked",
+          "effective_cell_coverage": "reference_only"
+        }
+      ],
+      "params_schema": {
+        "type": "object",
+        "properties": {
+          "dims": {
+            "type": ["array", "null"],
+            "default": null,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "supported_threshold": {
+            "type": ["number", "null"],
+            "minimum": 0
+          },
+          "out_of_reference_threshold": {
+            "type": ["number", "null"],
+            "minimum": 0
+          },
+          "support_output_key": {
+            "type": "string",
+            "default": "reference_support",
+            "minLength": 1
+          },
+          "annotation_output_key": {
+            "type": "string",
+            "default": "reference_annotation",
+            "minLength": 1
+          },
+          "continuous_output_keys": {
+            "type": ["array", "null"],
+            "default": null,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "space_chunk_size": {
+            "type": "integer",
+            "default": 1024,
+            "minimum": 1,
+            "maximum": 1000000
+          }
+        },
+        "additionalProperties": false
+      },
+      "typed_space_reads": [
+        {
+          "name": "query_coordinates",
+          "input": "in_space",
+          "reader": "read_typed_space",
+          "kind": "space",
+          "role": "query",
+          "selection": {
+            "policy": "full_input_axis_v1"
+          },
+          "chunk_size_parameter": "space_chunk_size",
+          "call_discipline": "ordered_partition_exactly_once"
+        },
+        {
+          "name": "reference_coordinates",
+          "input": "reference_space",
+          "reader": "read_typed_space",
+          "kind": "space",
+          "role": "candidate",
+          "selection": {
+            "policy": "full_input_axis_v1"
+          },
+          "chunk_size_parameter": "space_chunk_size",
+          "call_discipline": "ordered_partition_exactly_once"
+        }
+      ],
+      "self_linked_contained_model_reads": [
+        {
+          "name": "calibration_payload",
+          "input": "calibration",
+          "reader": "read_self_linked_contained_model_payload",
+          "allowed_models": [
+            {
+              "engine": "scwbreferencemap",
+              "model_type": "reference_map_calibration"
+            }
+          ],
+          "linkage_policy": "authenticated_existing_source_and_cell_linkage_v1",
+          "maximum_file_count": 4,
+          "maximum_total_bytes": 67108864,
+          "call_discipline": "exactly_once"
+        }
+      ],
+      "dimension_policies": [
+        {
+          "output": "support_call",
+          "policy": "authenticated_output_axes_v1",
+          "shape": "one_per_cell",
+          "cell_axis": {
+            "source": "effective_cells_v1",
+            "input": "in_space"
+          },
+          "row_order": "input_cell_order_v1",
+          "missing_values": "forbidden"
+        },
+        {
+          "output": "accepted_annotation",
+          "policy": "data_dependent_table_v1"
+        },
+        {
+          "schema": "scworkbench.operation_pack.standalone_sparse_cell_family_policy.v1",
+          "output": "numeric_outputs",
+          "policy": "standalone_sparse_cell_family_v1",
+          "axis_source": {
+            "source": "typed_space_input_v1",
+            "input": "in_space"
+          },
+          "key_order": "declared_verbatim_v1",
+          "row_order": "key_major_then_source_relative_cell_v1",
+          "per_key_coverage": "per_key_source_relative_subset_v1",
+          "missing_values": "forbidden",
+          "declaration_discipline": "exactly_once_before_write",
+          "maximum_axis_cells": 1000000,
+          "maximum_keys": 64,
+          "maximum_rows": 1000000,
+          "maximum_id_bytes": 1024,
+          "maximum_control_bytes": 67108864,
+          "policy_identity": {
+            "scheme": "scworkbench.operation_pack.standalone_sparse_cell_family_policy.v1",
+            "scope": "policy excluding policy_identity",
+            "sha256": "e8123bfefa7a491e779554dcdc6384ff4a66cb5734a364d7f6fbf45c7d50d9c0"
+          }
+        },
+        {
+          "output": "per_query_summary",
+          "policy": "data_dependent_table_v1"
+        },
+        {
+          "output": "categorical_estimates",
+          "policy": "data_dependent_table_v1"
+        },
+        {
+          "output": "continuous_estimates",
+          "policy": "data_dependent_table_v1"
+        },
+        {
+          "output": "grouped_summary",
+          "policy": "data_dependent_table_v1"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "support_call",
+          "category": "terminal_artifact",
+          "kind": "cell_vector",
+          "storage_profile": "terminal_primitive_v1",
+          "allocated_id_key": "support_call_id",
+          "required": true,
+          "promotion_group": "transfer",
+          "value_kind": "categorical"
+        },
+        {
+          "name": "accepted_annotation",
+          "category": "terminal_artifact",
+          "kind": "obs_table",
+          "storage_profile": "terminal_primitive_v1",
+          "allocated_id_key": "accepted_annotation_id",
+          "required": true,
+          "promotion_group": "transfer",
+          "table_type": "reference_map_accepted_annotation"
+        },
+        {
+          "name": "numeric_outputs",
+          "category": "terminal_artifact",
+          "kind": "cell_vector_family",
+          "storage_profile": "terminal_primitive_v1",
+          "allocated_id_key": "numeric_outputs_id",
+          "required": true,
+          "promotion_group": "transfer",
+          "value_kind": "continuous"
+        },
+        {
+          "name": "per_query_summary",
+          "category": "terminal_artifact",
+          "kind": "obs_table",
+          "storage_profile": "terminal_primitive_v1",
+          "allocated_id_key": "per_query_summary_id",
+          "required": true,
+          "promotion_group": "transfer",
+          "table_type": "reference_map_per_query"
+        },
+        {
+          "name": "categorical_estimates",
+          "category": "terminal_artifact",
+          "kind": "obs_table",
+          "storage_profile": "terminal_primitive_v1",
+          "allocated_id_key": "categorical_estimates_id",
+          "required": true,
+          "promotion_group": "transfer",
+          "table_type": "reference_map_categorical_estimates"
+        },
+        {
+          "name": "continuous_estimates",
+          "category": "terminal_artifact",
+          "kind": "obs_table",
+          "storage_profile": "terminal_primitive_v1",
+          "allocated_id_key": "continuous_estimates_id",
+          "required": true,
+          "promotion_group": "transfer",
+          "table_type": "reference_map_continuous_estimates"
+        },
+        {
+          "name": "grouped_summary",
+          "category": "terminal_artifact",
+          "kind": "obs_table",
+          "storage_profile": "terminal_primitive_v1",
+          "allocated_id_key": "grouped_summary_id",
+          "required": true,
+          "promotion_group": "transfer",
+          "table_type": "reference_map_grouped_summary"
+        }
+      ],
+      "dependencies": [
+        {
+          "requirement_id": "scworkbench_runtime",
+          "kind": "r_package",
+          "name": "scworkbench",
+          "version": {
+            "scheme": "r_package_version_constraint_v1",
+            "specifier": ">=0.1.0,<0.2.0"
+          },
+          "disposition": "required",
+          "import_probe": "wb_prim_obs_table"
+        },
+        {
+          "requirement_id": "jsonlite_runtime",
+          "kind": "r_package",
+          "name": "jsonlite",
+          "version": {
+            "scheme": "r_package_version_constraint_v1",
+            "specifier": ">=1.8.0,<3.0.0"
+          },
+          "disposition": "required",
+          "import_probe": "fromJSON"
+        }
+      ],
+      "promotion_closure": {
+        "support_call": [
+          "accepted_annotation",
+          "categorical_estimates",
+          "continuous_estimates",
+          "grouped_summary",
+          "numeric_outputs",
+          "per_query_summary",
+          "support_call"
+        ],
+        "accepted_annotation": [
+          "accepted_annotation",
+          "categorical_estimates",
+          "continuous_estimates",
+          "grouped_summary",
+          "numeric_outputs",
+          "per_query_summary",
+          "support_call"
+        ],
+        "numeric_outputs": [
+          "accepted_annotation",
+          "categorical_estimates",
+          "continuous_estimates",
+          "grouped_summary",
+          "numeric_outputs",
+          "per_query_summary",
+          "support_call"
+        ],
+        "per_query_summary": [
+          "accepted_annotation",
+          "categorical_estimates",
+          "continuous_estimates",
+          "grouped_summary",
+          "numeric_outputs",
+          "per_query_summary",
+          "support_call"
+        ],
+        "categorical_estimates": [
+          "accepted_annotation",
+          "categorical_estimates",
+          "continuous_estimates",
+          "grouped_summary",
+          "numeric_outputs",
+          "per_query_summary",
+          "support_call"
+        ],
+        "continuous_estimates": [
+          "accepted_annotation",
+          "categorical_estimates",
+          "continuous_estimates",
+          "grouped_summary",
+          "numeric_outputs",
+          "per_query_summary",
+          "support_call"
+        ],
+        "grouped_summary": [
+          "accepted_annotation",
+          "categorical_estimates",
+          "continuous_estimates",
+          "grouped_summary",
+          "numeric_outputs",
+          "per_query_summary",
+          "support_call"
+        ]
+      },
+      "replay_equivalence": {
+        "support_call": "exact_canonical_value",
+        "accepted_annotation": "exact_canonical_value",
+        "numeric_outputs": "exact_canonical_value",
+        "per_query_summary": "exact_canonical_value",
+        "categorical_estimates": "exact_canonical_value",
+        "continuous_estimates": "exact_canonical_value",
+        "grouped_summary": "exact_canonical_value"
+      },
+      "retained_parameters": [
+        {
+          "name": "dims",
+          "source": "effective_parameter_value",
+          "parameter": "dims",
+          "required": false
+        },
+        {
+          "name": "supported_threshold",
+          "source": "effective_parameter_value",
+          "parameter": "supported_threshold",
+          "required": true
+        },
+        {
+          "name": "out_of_reference_threshold",
+          "source": "effective_parameter_value",
+          "parameter": "out_of_reference_threshold",
+          "required": true
+        },
+        {
+          "name": "support_output_key",
+          "source": "effective_parameter_value",
+          "parameter": "support_output_key",
+          "required": true
+        },
+        {
+          "name": "annotation_output_key",
+          "source": "effective_parameter_value",
+          "parameter": "annotation_output_key",
+          "required": true
+        },
+        {
+          "name": "continuous_output_keys",
+          "source": "effective_parameter_value",
+          "parameter": "continuous_output_keys",
+          "required": false
+        },
+        {
+          "name": "space_chunk_size",
+          "source": "effective_parameter_value",
+          "parameter": "space_chunk_size",
+          "required": true
+        }
+      ],
+      "public_interface": {
+        "intent": [
+          "reference",
+          "mapping",
+          "transfer"
+        ],
+        "inputs": [
+          {
+            "name": "in_space",
+            "label": "query_space",
+            "help": "Authenticated query coordinates."
+          },
+          {
+            "name": "reference_space",
+            "label": "reference_space",
+            "help": "Authenticated calibrated reference coordinates."
+          },
+          {
+            "name": "neighbors",
+            "label": "neighbors",
+            "help": "Authenticated query-to-reference neighbor ledger."
+          },
+          {
+            "name": "calibration",
+            "label": "calibration",
+            "help": "Frozen retained reference-map calibration."
+          }
+        ],
+        "parameters": [
+          {
+            "name": "dims",
+            "type": "list",
+            "help": "Calibrated dimensions."
+          },
+          {
+            "name": "supported_threshold",
+            "type": "dbl",
+            "help": "Optional transfer-only supported threshold override."
+          },
+          {
+            "name": "out_of_reference_threshold",
+            "type": "dbl",
+            "help": "Optional transfer-only out-of-reference threshold override."
+          },
+          {
+            "name": "support_output_key",
+            "type": "string",
+            "help": "Caller-supplied support output key."
+          },
+          {
+            "name": "annotation_output_key",
+            "type": "string",
+            "help": "Caller-supplied annotation output key."
+          },
+          {
+            "name": "continuous_output_keys",
+            "type": "string_vec",
+            "help": "Caller-supplied keys for continuous outputs."
+          },
+          {
+            "name": "space_chunk_size",
+            "type": "int",
+            "help": "Bounded coordinate read size."
+          }
+        ],
+        "outputs": [
+          {
+            "name": "support_call",
+            "description": "Reference-map transfer support_call artifact."
+          },
+          {
+            "name": "accepted_annotation",
+            "description": "Reference-map transfer accepted_annotation artifact."
+          },
+          {
+            "name": "numeric_outputs",
+            "description": "Reference-map transfer numeric_outputs artifact."
+          },
+          {
+            "name": "per_query_summary",
+            "description": "Reference-map transfer per_query_summary artifact."
+          },
+          {
+            "name": "categorical_estimates",
+            "description": "Reference-map transfer categorical_estimates artifact."
+          },
+          {
+            "name": "continuous_estimates",
+            "description": "Reference-map transfer continuous_estimates artifact."
+          },
+          {
+            "name": "grouped_summary",
+            "description": "Reference-map transfer grouped_summary artifact."
+          }
+        ]
+      }
+    }
+  ]
+}
