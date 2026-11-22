@@ -1,7 +1,7 @@
 Package: scwbReferenceMap
 Type: Package
 Title: Authenticated Reference Mapping for scworkbench
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: c(
     person(
       given = "Hendrik A.",
@@ -19,5 +19,5 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 Depends: R (>= 4.1.0)
 Imports: jsonlite, scworkbench, stats
-Suggests: DBI, fs, Matrix, RANN, RSQLite
+Suggests: BPCells, DBI, fs, Matrix, RANN, RSQLite
 RoxygenNote: 7.3.3

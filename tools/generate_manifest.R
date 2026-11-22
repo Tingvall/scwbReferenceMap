@@ -182,10 +182,20 @@ transfer_params <- list(
     default = "reference_annotation", minLength = 1L),
   continuous_output_keys = list(type = c("array", "null"), default = NULL,
     uniqueItems = TRUE, items = list(type = "string", minLength = 1L)),
+  continuous_acceptance = list(type = "object",
+    default = list(mode = "support_only"), additionalProperties = FALSE,
+    properties = list(
+      mode = list(type = "string", default = "support_only",
+        enum = list("support_only", "support_and_annotation")),
+      accepted_annotation_values = list(type = c("array", "string", "null"),
+        default = NULL, minItems = 1L, uniqueItems = TRUE,
+        items = list(type = "string", minLength = 1L)),
+      minimum_annotation_confidence = list(type = "number", default = .5,
+        minimum = 0, maximum = 1))),
   space_chunk_size = parameter("integer", 1024L, 1L, 1000000L, FALSE))
 transfer_outputs <- c("support_call", "accepted_annotation",
   "numeric_outputs", "per_query_summary", "categorical_estimates",
-  "continuous_estimates", "grouped_summary")
+  "continuous_estimates", "continuous_acceptance", "grouped_summary")
 transfer <- list(
   name = "reference_map_transfer",
   qualified_name = "scwbreferencemap::reference_map_transfer",
@@ -232,6 +242,8 @@ transfer <- list(
       "reference_map_categorical_estimates"),
     output("continuous_estimates", "obs_table", "transfer",
       "reference_map_continuous_estimates"),
+    output("continuous_acceptance", "obs_table", "transfer",
+      "reference_map_continuous_acceptance"),
     output("grouped_summary", "obs_table", "transfer",
       "reference_map_grouped_summary")),
   dependencies = list(identity("scworkbench_runtime", "wb_prim_obs_table",
@@ -262,6 +274,9 @@ transfer <- list(
         help = "Caller-supplied annotation output key."),
       list(name = "continuous_output_keys", type = "string_vec",
         help = "Caller-supplied keys for continuous outputs."),
+      list(name = "continuous_acceptance", type = "list",
+        help = paste("Policy for accepting continuous outputs after reference",
+          "support and optional annotation-membership checks.")),
       list(name = "space_chunk_size", type = "int",
         help = "Bounded coordinate read size.")),
     outputs = lapply(transfer_outputs, function(name) list(name = name,
@@ -271,9 +286,9 @@ manifest <- list(
   schema_version = "scworkbench.operation_pack.v3", pack_abi_version = "3",
   identity_scheme = "scworkbench.operation_pack.canonical_json.v1",
   namespace = "scwbreferencemap",
-  package = list(name = "scwbReferenceMap", version = "0.1.0"),
+  package = list(name = "scwbReferenceMap", version = "0.2.0"),
   backend = "R", compatibility = list(
-    scworkbench = list(minimum = "0.1.0", maximum_exclusive = "0.2.0"),
+    scworkbench = list(minimum = "0.1.2", maximum_exclusive = "0.2.0"),
     pack_abi = list(minimum = "3", maximum = "3")),
   entry_point = "scwbReferenceMap::register_operation_pack",
   operations = list(calibrate, transfer))

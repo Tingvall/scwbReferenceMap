@@ -5,12 +5,12 @@
   "namespace": "scwbreferencemap",
   "package": {
     "name": "scwbReferenceMap",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "backend": "R",
   "compatibility": {
     "scworkbench": {
-      "minimum": "0.1.0",
+      "minimum": "0.1.2",
       "maximum_exclusive": "0.2.0"
     },
     "pack_abi": {
@@ -538,6 +538,39 @@
               "minLength": 1
             }
           },
+          "continuous_acceptance": {
+            "type": "object",
+            "default": {
+              "mode": "support_only"
+            },
+            "additionalProperties": false,
+            "properties": {
+              "mode": {
+                "type": "string",
+                "default": "support_only",
+                "enum": [
+                  "support_only",
+                  "support_and_annotation"
+                ]
+              },
+              "accepted_annotation_values": {
+                "type": ["array", "string", "null"],
+                "default": null,
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "minimum_annotation_confidence": {
+                "type": "number",
+                "default": 0.5,
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          },
           "space_chunk_size": {
             "type": "integer",
             "default": 1024,
@@ -643,6 +676,10 @@
           "policy": "data_dependent_table_v1"
         },
         {
+          "output": "continuous_acceptance",
+          "policy": "data_dependent_table_v1"
+        },
+        {
           "output": "grouped_summary",
           "policy": "data_dependent_table_v1"
         }
@@ -709,6 +746,16 @@
           "table_type": "reference_map_continuous_estimates"
         },
         {
+          "name": "continuous_acceptance",
+          "category": "terminal_artifact",
+          "kind": "obs_table",
+          "storage_profile": "terminal_primitive_v1",
+          "allocated_id_key": "continuous_acceptance_id",
+          "required": true,
+          "promotion_group": "transfer",
+          "table_type": "reference_map_continuous_acceptance"
+        },
+        {
           "name": "grouped_summary",
           "category": "terminal_artifact",
           "kind": "obs_table",
@@ -747,6 +794,7 @@
         "support_call": [
           "accepted_annotation",
           "categorical_estimates",
+          "continuous_acceptance",
           "continuous_estimates",
           "grouped_summary",
           "numeric_outputs",
@@ -756,6 +804,7 @@
         "accepted_annotation": [
           "accepted_annotation",
           "categorical_estimates",
+          "continuous_acceptance",
           "continuous_estimates",
           "grouped_summary",
           "numeric_outputs",
@@ -765,6 +814,7 @@
         "numeric_outputs": [
           "accepted_annotation",
           "categorical_estimates",
+          "continuous_acceptance",
           "continuous_estimates",
           "grouped_summary",
           "numeric_outputs",
@@ -774,6 +824,7 @@
         "per_query_summary": [
           "accepted_annotation",
           "categorical_estimates",
+          "continuous_acceptance",
           "continuous_estimates",
           "grouped_summary",
           "numeric_outputs",
@@ -783,6 +834,7 @@
         "categorical_estimates": [
           "accepted_annotation",
           "categorical_estimates",
+          "continuous_acceptance",
           "continuous_estimates",
           "grouped_summary",
           "numeric_outputs",
@@ -792,6 +844,17 @@
         "continuous_estimates": [
           "accepted_annotation",
           "categorical_estimates",
+          "continuous_acceptance",
+          "continuous_estimates",
+          "grouped_summary",
+          "numeric_outputs",
+          "per_query_summary",
+          "support_call"
+        ],
+        "continuous_acceptance": [
+          "accepted_annotation",
+          "categorical_estimates",
+          "continuous_acceptance",
           "continuous_estimates",
           "grouped_summary",
           "numeric_outputs",
@@ -801,6 +864,7 @@
         "grouped_summary": [
           "accepted_annotation",
           "categorical_estimates",
+          "continuous_acceptance",
           "continuous_estimates",
           "grouped_summary",
           "numeric_outputs",
@@ -815,6 +879,7 @@
         "per_query_summary": "exact_canonical_value",
         "categorical_estimates": "exact_canonical_value",
         "continuous_estimates": "exact_canonical_value",
+        "continuous_acceptance": "exact_canonical_value",
         "grouped_summary": "exact_canonical_value"
       },
       "retained_parameters": [
@@ -853,6 +918,12 @@
           "source": "effective_parameter_value",
           "parameter": "continuous_output_keys",
           "required": false
+        },
+        {
+          "name": "continuous_acceptance",
+          "source": "effective_parameter_value",
+          "parameter": "continuous_acceptance",
+          "required": true
         },
         {
           "name": "space_chunk_size",
@@ -921,6 +992,11 @@
             "help": "Caller-supplied keys for continuous outputs."
           },
           {
+            "name": "continuous_acceptance",
+            "type": "list",
+            "help": "Policy for accepting continuous outputs after reference support and optional annotation-membership checks."
+          },
+          {
             "name": "space_chunk_size",
             "type": "int",
             "help": "Bounded coordinate read size."
@@ -950,6 +1026,10 @@
           {
             "name": "continuous_estimates",
             "description": "Reference-map transfer continuous_estimates artifact."
+          },
+          {
+            "name": "continuous_acceptance",
+            "description": "Reference-map transfer continuous_acceptance artifact."
           },
           {
             "name": "grouped_summary",

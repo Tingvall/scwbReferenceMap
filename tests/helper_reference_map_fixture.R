@@ -10,7 +10,7 @@ reference_map_activate_pack <- function() {
 }
 
 reference_map_fixture <- function(annotation = TRUE, continuous = TRUE,
-    annotation_values = NULL, query_values = NULL) {
+    annotation_values = NULL, continuous_values = NULL, query_values = NULL) {
   reference_map_activate_pack()
   root <- tempfile("scwbReferenceMap-test-")
   bundle <- wb_init_bundle(root, overwrite = TRUE)
@@ -42,8 +42,10 @@ reference_map_fixture <- function(annotation = TRUE, continuous = TRUE,
   annotation_value <- if (annotation) scworkbench::wb_prim_cell_vector(
     stats::setNames(labels, reference_cells),
     value_type = "categorical") else NULL
-  trajectory <- rep(seq(0, 1, length.out = 4L), times = 3L)
-  trajectory[[12L]] <- NA_real_
+  trajectory <- if (is.null(continuous_values))
+    rep(seq(0, 1, length.out = 4L), times = 3L) else continuous_values
+  stopifnot(length(trajectory) == length(reference_cells))
+  if (is.null(continuous_values)) trajectory[[12L]] <- NA_real_
   continuous_value <- if (continuous)
     scworkbench::wb_prim_cell_vector_family(rep("trajectory", 12L),
       reference_cells, trajectory, value_type = "continuous") else NULL
@@ -96,7 +98,7 @@ reference_map_promote_calibration <- function(x, calibration) {
 
 reference_map_transfer <- function(x, model_id, ledger = reference_map_ledger(x),
     supported_threshold = .2, out_of_reference_threshold = 20,
-    reference_space = "reference") {
+    reference_space = "reference", continuous_acceptance = NULL) {
   inputs <- list(
       in_space = "query", reference_space = reference_space,
       neighbors = ledger,
@@ -108,6 +110,8 @@ reference_map_transfer <- function(x, model_id, ledger = reference_map_ledger(x)
       cell_ids = x$query_cells, min_cells = 1L, space_chunk_size = 2L)
   if (!is.null(x$continuous))
     inputs$continuous_output_keys <- "mapped_trajectory"
+  if (!is.null(continuous_acceptance))
+    inputs$continuous_acceptance <- continuous_acceptance
   wb_session_run_op(wb_session_new(), x$bundle,
     "scwbreferencemap::reference_map_transfer", inputs = inputs)
 }

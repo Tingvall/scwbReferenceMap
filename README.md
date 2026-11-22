@@ -20,6 +20,28 @@ operation-pack boundary.
   categorical and continuous estimates but withholds accepted transferred
   values for out-of-reference queries.
 
+Transfer optionally accepts a continuous-value policy. The default
+`list(mode = "support_only")` preserves support-only behavior: both supported
+and borderline queries may publish continuous values. A domain-aware policy
+can additionally require the primary-k annotation prediction to belong to an
+accepted set with a declared minimum confidence:
+
+```r
+continuous_acceptance = list(
+  mode = "support_and_annotation",
+  accepted_annotation_values = c("in_domain"),
+  minimum_annotation_confidence = 0.5
+)
+```
+
+Domain-aware acceptance requires a non-missing annotation for every reference
+cell so that unlabeled neighbors cannot inflate annotation confidence.
+
+Raw estimates remain in `continuous_estimates`. The
+`continuous_acceptance` table records one decision per query and continuous
+key with one of `accepted`, `out_of_reference`, `annotation_not_accepted`,
+`annotation_confidence_too_low`, or `continuous_value_unavailable`.
+
 The provisional defaults are `k = 15, 30, 50`, primary `k = 30`, median
 first-30 neighbor distance, and q95/q99 support thresholds. Transfer may
 override the two numeric thresholds without changing the retained calibration.

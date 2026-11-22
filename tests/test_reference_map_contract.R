@@ -36,11 +36,88 @@ test_reference_map_end_to_end_contract <- function() {
       transfer$run$outputs$numeric_outputs$cell_id == "q_out"),
     any(transfer$run$outputs$continuous_estimates$table$query_cell_id ==
       "q_out"),
+    identical(transfer$run$outputs$continuous_acceptance$table$
+      acceptance_reason,
+      c("accepted", "accepted", "out_of_reference")),
     identical(transfer$run$params$supported_threshold, .2),
-    identical(transfer$run$params$out_of_reference_threshold, 20))
+    identical(transfer$run$params$out_of_reference_threshold, 20),
+    identical(transfer$run$params$continuous_acceptance$mode,
+      "support_only"))
   promoted <- wb_session_promote_current(x$bundle, transfer$session,
     outputs = names(transfer$run$outputs), created_by = "synthetic-contract")
   stopifnot(all(promoted$promoted$status == "ok"))
+  TRUE
+}
+
+test_reference_map_continuous_acceptance_contract <- function() {
+  x <- reference_map_fixture()
+  on.exit(reference_map_close(x), add = TRUE)
+  calibration <- reference_map_calibrate(x)
+  retained <- reference_map_promote_calibration(x, calibration)
+  policy <- list(mode = "support_and_annotation",
+    accepted_annotation_values = "state_1",
+    minimum_annotation_confidence = .5)
+  transfer <- reference_map_transfer(x, retained$model_id,
+    continuous_acceptance = policy)
+  acceptance <- transfer$run$outputs$continuous_acceptance$table
+  stopifnot(identical(acceptance$query_cell_id, x$query_cells),
+    identical(acceptance$acceptance_reason,
+      c("accepted", "annotation_not_accepted", "out_of_reference")),
+    identical(acceptance$accepted, c(TRUE, FALSE, FALSE)),
+    all(is.finite(acceptance$raw_estimate)),
+    identical(transfer$run$outputs$numeric_outputs$cell_id[
+      transfer$run$outputs$numeric_outputs$key == "mapped_trajectory"],
+      "q_supported"),
+    all(x$query_cells %in%
+      transfer$run$outputs$continuous_estimates$table$query_cell_id))
+
+  labels <- rep("out_domain", length(x$reference_cells))
+  labels[c(1L, 5L)] <- "in_domain"
+  y <- reference_map_fixture(annotation_values = labels)
+  on.exit(reference_map_close(y), add = TRUE)
+  calibration_y <- reference_map_calibrate(y)
+  retained_y <- reference_map_promote_calibration(y, calibration_y)
+  low <- reference_map_transfer(y, retained_y$model_id,
+    continuous_acceptance = list(mode = "support_and_annotation",
+      accepted_annotation_values = "in_domain",
+      minimum_annotation_confidence = .9))
+  low_acceptance <- low$run$outputs$continuous_acceptance$table
+  stopifnot(identical(low_acceptance$acceptance_reason[[1L]],
+      "annotation_confidence_too_low"),
+    !low_acceptance$accepted[[1L]], is.finite(low_acceptance$raw_estimate[[1L]]))
+
+  z <- reference_map_fixture(continuous_values = rep(NA_real_, 12L))
+  on.exit(reference_map_close(z), add = TRUE)
+  calibration_z <- suppressWarnings(reference_map_calibrate(z))
+  retained_z <- reference_map_promote_calibration(z, calibration_z)
+  unavailable <- reference_map_transfer(z, retained_z$model_id)
+  unavailable_acceptance <-
+    unavailable$run$outputs$continuous_acceptance$table
+  stopifnot(identical(unavailable_acceptance$acceptance_reason,
+      c("continuous_value_unavailable", "continuous_value_unavailable",
+        "out_of_reference")),
+    all(is.na(unavailable_acceptance$raw_estimate)))
+
+  invalid <- try(reference_map_transfer(x, retained$model_id,
+    continuous_acceptance = list(mode = "support_and_annotation",
+      accepted_annotation_values = "unknown", minimum_annotation_confidence = .5)),
+    silent = TRUE)
+  incomplete_labels <- paste0("state_", rep(seq_len(4L), times = 3L))
+  incomplete_labels[c(5L, 9L)] <- NA_character_
+  incomplete <- reference_map_fixture(annotation_values = incomplete_labels)
+  on.exit(reference_map_close(incomplete), add = TRUE)
+  incomplete_calibration <- reference_map_calibrate(incomplete)
+  incomplete_retained <- reference_map_promote_calibration(incomplete,
+    incomplete_calibration)
+  incomplete_transfer <- try(reference_map_transfer(incomplete,
+    incomplete_retained$model_id,
+    continuous_acceptance = list(mode = "support_and_annotation",
+      accepted_annotation_values = "state_1",
+      minimum_annotation_confidence = .5)), silent = TRUE)
+  stopifnot(inherits(invalid, "try-error"),
+    inherits(incomplete_transfer, "try-error"),
+    grepl("requires complete reference annotations",
+      as.character(incomplete_transfer), fixed = TRUE))
   TRUE
 }
 

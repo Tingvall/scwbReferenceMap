@@ -66,6 +66,40 @@
       as.character(x)[1L], character(1)), reference_cells)
   annotation_universe <- as.character(unlist(
     calibration$reference$annotation_categories, use.names = FALSE))
+  acceptance_policy <- params$continuous_acceptance %||%
+    list(mode = "support_only")
+  acceptance_mode <- as.character(acceptance_policy$mode %||%
+    "support_only")
+  .refmap_assert(length(acceptance_mode) == 1L &&
+      acceptance_mode %in% c("support_only", "support_and_annotation"),
+    "continuous_acceptance mode is unsupported.")
+  accepted_annotation_values <- as.character(unlist(
+    acceptance_policy$accepted_annotation_values %||% character(),
+    use.names = FALSE))
+  minimum_annotation_confidence <- as.numeric(
+    acceptance_policy$minimum_annotation_confidence %||% .5)
+  if (identical(acceptance_mode, "support_and_annotation")) {
+    .refmap_assert(!is.null(annotation), paste(
+      "support_and_annotation continuous acceptance requires a calibrated",
+      "reference annotation."))
+    .refmap_assert(all(!is.na(annotation) & nzchar(annotation)), paste(
+      "support_and_annotation continuous acceptance requires complete",
+      "reference annotations."))
+    .refmap_assert(length(accepted_annotation_values) > 0L &&
+        !anyNA(accepted_annotation_values) &&
+        all(nzchar(accepted_annotation_values)) &&
+        !anyDuplicated(accepted_annotation_values),
+      paste("accepted_annotation_values must contain unique, non-empty",
+        "annotation values."))
+    .refmap_assert(all(accepted_annotation_values %in% annotation_universe),
+      paste("accepted_annotation_values contains values absent from the",
+        "calibrated annotation universe."))
+    .refmap_assert(length(minimum_annotation_confidence) == 1L &&
+        is.finite(minimum_annotation_confidence) &&
+        minimum_annotation_confidence >= 0 &&
+        minimum_annotation_confidence <= 1,
+      "minimum_annotation_confidence must be finite and in [0, 1].")
+  }
   continuous_raw <- calibration$reference$continuous %||% list()
   continuous <- lapply(continuous_raw, function(values) stats::setNames(
     vapply(values, function(x) if (is.null(x)) NA_real_ else as.numeric(x)[1L],
@@ -80,6 +114,7 @@
   names(output_keys) <- continuous_names
 
   per_query <- list(); categorical_rows <- list(); continuous_rows <- list()
+  continuous_acceptance_rows <- list()
   accepted_annotation <- stats::setNames(rep(NA_character_, length(query_cells)),
     query_cells)
   accepted_continuous <- stats::setNames(lapply(continuous_names,
@@ -133,11 +168,32 @@
         logical(1))
       for (j in which(indexes)) continuous_rows[[j]]$cross_k_sensitivity <-
         sensitivity
-      if (!identical(status, "out_of_reference"))
+      acceptance_reason <- if (identical(status, "out_of_reference")) {
+        "out_of_reference"
+      } else if (identical(acceptance_mode, "support_and_annotation") &&
+          !primary_vote$label %in% accepted_annotation_values) {
+        "annotation_not_accepted"
+      } else if (identical(acceptance_mode, "support_and_annotation") &&
+          (is.na(primary_vote$confidence) ||
+            primary_vote$confidence < minimum_annotation_confidence)) {
+        "annotation_confidence_too_low"
+      } else if (!is.finite(primary_estimate)) {
+        "continuous_value_unavailable"
+      } else {
+        "accepted"
+      }
+      accepted <- identical(acceptance_reason, "accepted")
+      if (accepted)
         accepted_continuous[[name]][[cell]] <- primary_estimate
+      continuous_acceptance_rows[[length(continuous_acceptance_rows) + 1L]] <-
+        data.frame(query_cell_id = cell, reference_key = name,
+          output_key = unname(output_keys[[name]]), accepted = accepted,
+          acceptance_reason = acceptance_reason,
+          raw_estimate = primary_estimate,
+          accepted_value = if (accepted) primary_estimate else NA_real_,
+          stringsAsFactors = FALSE)
       if (identical(name, as.character(config$primary_continuous_key %||% "")))
-        primary_continuous_value <- if (identical(status, "out_of_reference"))
-          NA_real_ else primary_estimate
+        primary_continuous_value <- if (accepted) primary_estimate else NA_real_
     }
     per_query[[i]] <- data.frame(query_cell_id = cell, support_call = status,
       distance_statistic = statistic, supported_threshold = supported_threshold,
@@ -162,6 +218,14 @@
     iqr = NA_real_, n_non_missing = NA_integer_,
     cross_k_sensitivity = NA_real_, stringsAsFactors = FALSE))
   continuous_table <- do.call(rbind, continuous_rows)
+  if (length(continuous_acceptance_rows)) {
+    continuous_acceptance_table <- do.call(rbind, continuous_acceptance_rows)
+    rownames(continuous_acceptance_table) <- NULL
+  } else continuous_acceptance_table <- data.frame(
+    query_cell_id = character(), reference_key = character(),
+    output_key = character(), accepted = logical(),
+    acceptance_reason = character(), raw_estimate = numeric(),
+    accepted_value = numeric(), stringsAsFactors = FALSE)
   grouped <- as.data.frame(table(factor(per_query_table$support_call,
     levels = c("supported", "borderline", "out_of_reference"))),
     stringsAsFactors = FALSE)
@@ -222,6 +286,10 @@
     scworkbench::wb_prim_obs_table(continuous_table,
       table_type = "reference_map_continuous_estimates",
       entity_kind = "query_cell_vector_k"))
+  writers$write_terminal_primitive("continuous_acceptance",
+    scworkbench::wb_prim_obs_table(continuous_acceptance_table,
+      table_type = "reference_map_continuous_acceptance",
+      entity_kind = "query_cell_vector"))
   writers$write_terminal_primitive("grouped_summary",
     scworkbench::wb_prim_obs_table(grouped,
       table_type = "reference_map_grouped_summary", entity_kind = "support_call"))
